@@ -44,6 +44,8 @@ def detect_platform(url):
         return "youtube"
     if re.search(r'(instagram\.com)', url):
         return "instagram"
+    if re.search(r'(pinterest\.com|pin\.it)', url):
+        return "pinterest"
     return None
 
 
@@ -125,6 +127,8 @@ def get_youtube_info(url):
 
     return {
         "title": info.get("title", "Unknown"),
+        "description": info.get("description", ""),
+        "tags": info.get("tags", []),
         "thumbnail": info.get("thumbnail", ""),
         "duration": duration,
         "channel": info.get("channel", info.get("uploader", "Unknown")),
@@ -186,16 +190,127 @@ def get_instagram_info(url):
                 "index": i,
             })
 
-    title = info.get("title") or info.get("description", "Instagram Post")
-    if len(title) > 60:
-        title = title[:60] + "..."
+    description = info.get("description", "")
+    title = info.get("title") or ""
+    if not title and description:
+        title = description[:60] + ("..." if len(description) > 60 else "")
+    elif not title:
+        title = "Instagram Post"
+
+    # Extract hashtags from description as tags
+    tags = re.findall(r'#(\w+)', description) if description else []
 
     return {
         "title": title,
+        "description": description,
+        "tags": tags,
         "thumbnail": info.get("thumbnail", entries[0].get("thumbnail", "") if entries else ""),
         "duration": info.get("duration", 0),
         "channel": info.get("channel", info.get("uploader", "Unknown")),
         "platform": "instagram",
+        "formats": formats,
+    }
+
+
+# ─── Pinterest Info ───
+def get_pinterest_info(url):
+    ydl_opts = {
+        "quiet": True,
+        "no_warnings": True,
+        "skip_download": True,
+        "ffmpeg_location": FFMPEG_DIR,
+    }
+
+    info = {}
+    is_video = False
+    try:
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            info = ydl.extract_info(url, download=False)
+        is_video = True
+    except Exception:
+        pass
+
+    # Scrape page for image URL and metadata
+    try:
+        req = urllib.request.Request(url, headers={
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+        })
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            html = resp.read().decode("utf-8", errors="ignore")
+
+        # Find original quality image
+        orig_match = re.search(r'https://i\.pinimg\.com/originals/[^"\\s]+', html)
+        # Find any pinimg URL as fallback
+        any_match = re.search(r'https://i\.pinimg\.com/[^"\\s]+', html)
+
+        image_url = ""
+        if orig_match:
+            image_url = orig_match.group(0).split(")")[0].split("}")[0]
+        elif any_match:
+            image_url = any_match.group(0).split(")")[0].split("}")[0]
+
+        # Also try to get 236x as thumbnail
+        thumb_match = re.search(r'https://i\.pinimg\.com/236x/[^"\\s]+', html)
+        thumbnail = thumb_match.group(0).split(")")[0] if thumb_match else image_url
+
+        if not info.get("title"):
+            title_match = re.search(r'<title>([^<]+)</title>', html)
+            info["title"] = title_match.group(1).replace(" | Pinterest", "").strip() if title_match else ""
+
+        if not info.get("description"):
+            desc_match = re.search(r'"description":"([^"]*)"', html)
+            info["description"] = desc_match.group(1) if desc_match else ""
+
+        info["_image_url"] = image_url
+        info["thumbnail"] = info.get("thumbnail") or thumbnail
+    except Exception:
+        pass
+
+    description = info.get("description", "")
+    title = info.get("title") or ""
+    if not title and description:
+        title = description[:60] + ("..." if len(description) > 60 else "")
+    elif not title:
+        title = "Pinterest Pin"
+
+    tags = re.findall(r'#(\w+)', description) if description else []
+
+    formats = []
+
+    if is_video:
+        best = None
+        for f in reversed(info.get("formats", [])):
+            if f.get("vcodec") != "none":
+                best = f
+                break
+        if best:
+            height = best.get("height", 0)
+            filesize = best.get("filesize") or best.get("filesize_approx")
+            formats.append({
+                "quality": f"{height}p" if height else "Video",
+                "ext": "mp4",
+                "filesize": filesize,
+                "type": "video",
+            })
+
+    # Always add image option
+    if info.get("thumbnail") or info.get("_image_url"):
+        formats.append({
+            "quality": "Image",
+            "ext": "jpg",
+            "filesize": None,
+            "type": "image",
+            "image_url": info.get("_image_url") or info.get("thumbnail", ""),
+        })
+
+    return {
+        "title": title,
+        "description": description,
+        "tags": tags,
+        "thumbnail": info.get("thumbnail", ""),
+        "duration": info.get("duration", 0),
+        "channel": info.get("channel", info.get("uploader", "Unknown")),
+        "platform": "pinterest",
         "formats": formats,
     }
 
@@ -207,14 +322,16 @@ def get_video_info():
     url = data.get("url", "").strip()
 
     if not url or not is_valid_url(url):
-        return jsonify({"error": "Please enter a valid YouTube or Instagram URL"}), 400
+        return jsonify({"error": "Please enter a valid URL (YouTube, Instagram, or Pinterest)"}), 400
 
     try:
         platform = detect_platform(url)
         if platform == "youtube":
             result = get_youtube_info(url)
-        else:
+        elif platform == "instagram":
             result = get_instagram_info(url)
+        else:
+            result = get_pinterest_info(url)
         return jsonify(result)
 
     except Exception as e:
@@ -265,7 +382,48 @@ def download_video():
                     "merge_output_format": "mp4",
                 }
         else:
-            # Instagram
+            # Instagram / Pinterest
+            if dl_type == "image":
+                # Download image directly
+                image_url = data.get("image_url", "")
+                title = "download"
+
+                if not image_url or platform == "pinterest":
+                    pin_info = get_pinterest_info(url)
+                    title = re.sub(r'[^\w\s-]', '', pin_info.get("title", "download") or "download").strip()
+                    if not image_url:
+                        for fmt in pin_info.get("formats", []):
+                            if fmt.get("type") == "image" and fmt.get("image_url"):
+                                image_url = fmt["image_url"]
+                                break
+                    if not image_url:
+                        return jsonify({"error": "Image URL not found"}), 400
+
+                if not title:
+                    title = "download"
+
+                req = urllib.request.Request(image_url, headers={"User-Agent": "Mozilla/5.0"})
+                with urllib.request.urlopen(req, timeout=30) as resp:
+                    img_data = resp.read()
+
+                # Detect actual extension from URL
+                ext = "jpg"
+                if ".png" in image_url:
+                    ext = "png"
+                elif ".gif" in image_url:
+                    ext = "gif"
+
+                filename = f"{title[:80]}.{ext}"
+
+                return Response(
+                    img_data,
+                    mimetype="application/octet-stream",
+                    headers={
+                        "Content-Disposition": f'attachment; filename="{filename}"',
+                        "Content-Length": str(len(img_data)),
+                    },
+                )
+
             ydl_opts = {
                 "quiet": True,
                 "no_warnings": True,

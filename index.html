@@ -92,6 +92,7 @@
 
         .platform-tag.yt { border-color: #ff4444; color: #ff4444; }
         .platform-tag.ig { border-color: #e1306c; color: #e1306c; }
+        .platform-tag.pt { border-color: #e60023; color: #e60023; }
 
         /* Search Box */
         .search-container {
@@ -245,6 +246,83 @@
 
         .platform-indicator.youtube { background: #ff4444; }
         .platform-indicator.instagram { background: #e1306c; }
+        .platform-indicator.pinterest { background: #e60023; }
+
+        /* Copy Sections */
+        .copy-section {
+            margin-top: 16px;
+            background: #222;
+            border-radius: 10px;
+            padding: 14px 16px;
+        }
+
+        .copy-section-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 8px;
+        }
+
+        .copy-section-header h4 {
+            font-size: 13px;
+            color: #888;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        .copy-btn {
+            padding: 4px 12px;
+            background: transparent;
+            color: #ff4444;
+            border: 1px solid #ff4444;
+            border-radius: 6px;
+            font-size: 11px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .copy-btn:hover {
+            background: #ff4444;
+            color: #fff;
+        }
+
+        .copy-btn.copied {
+            background: #27ae60;
+            border-color: #27ae60;
+            color: #fff;
+        }
+
+        .copy-text {
+            font-size: 13px;
+            color: #ccc;
+            line-height: 1.5;
+            word-break: break-word;
+            max-height: 105px;
+            overflow-y: auto;
+            white-space: pre-wrap;
+        }
+
+        .tags-container {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 6px;
+        }
+
+        .tag {
+            background: #333;
+            color: #ddd;
+            padding: 4px 10px;
+            border-radius: 14px;
+            font-size: 12px;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+
+        .tag:hover {
+            background: #ff4444;
+            color: #fff;
+        }
 
         /* Download Options */
         .download-options {
@@ -431,17 +509,18 @@
     <!-- Hero -->
     <section class="hero">
         <h1>Download <span>Media</span> Instantly</h1>
-        <p>Paste any YouTube or Instagram URL and download videos, reels, and photos in the best quality.</p>
+        <p>Paste any YouTube, Instagram, or Pinterest URL and download videos, reels, and photos in the best quality.</p>
         <div class="platforms">
             <span class="platform-tag yt">YouTube</span>
             <span class="platform-tag ig">Instagram</span>
+            <span class="platform-tag pt">Pinterest</span>
         </div>
     </section>
 
     <!-- Search -->
     <div class="search-container">
         <div class="search-box">
-            <input type="text" id="urlInput" placeholder="Paste YouTube or Instagram URL here..." />
+            <input type="text" id="urlInput" placeholder="Paste YouTube, Instagram, or Pinterest URL..." />
             <button id="fetchBtn" onclick="fetchVideo()">Fetch</button>
         </div>
         <p class="error-msg" id="errorMsg"></p>
@@ -467,6 +546,33 @@
                     </div>
                 </div>
             </div>
+            <!-- Title Copy -->
+            <div class="copy-section" id="titleSection" style="display:none;">
+                <div class="copy-section-header">
+                    <h4>Title</h4>
+                    <button class="copy-btn" onclick="copyText('titleText', this)">Copy</button>
+                </div>
+                <div class="copy-text" id="titleText"></div>
+            </div>
+
+            <!-- Description Copy -->
+            <div class="copy-section" id="descSection" style="display:none;">
+                <div class="copy-section-header">
+                    <h4>Description</h4>
+                    <button class="copy-btn" onclick="copyText('descText', this)">Copy</button>
+                </div>
+                <div class="copy-text" id="descText"></div>
+            </div>
+
+            <!-- Tags Copy -->
+            <div class="copy-section" id="tagsSection" style="display:none;">
+                <div class="copy-section-header">
+                    <h4>Tags</h4>
+                    <button class="copy-btn" onclick="copyAllTags(this)">Copy All</button>
+                </div>
+                <div class="tags-container" id="tagsList"></div>
+            </div>
+
             <div class="download-options">
                 <h4>Download Options</h4>
                 <div class="quality-list" id="qualityList"></div>
@@ -502,7 +608,7 @@
         const API_URL = "";
 
         function isValidUrl(url) {
-            return /youtube\.com|youtu\.be|instagram\.com/.test(url);
+            return /youtube\.com|youtu\.be|instagram\.com|pinterest\.com|pin\.it/.test(url);
         }
 
         function formatDuration(seconds) {
@@ -539,7 +645,7 @@
             }
 
             if (!isValidUrl(url)) {
-                showError("Please enter a valid YouTube or Instagram URL");
+                showError("Please enter a valid YouTube, Instagram, or Pinterest URL");
                 return;
             }
 
@@ -562,7 +668,8 @@
 
                 // Platform badge
                 const badge = document.getElementById("platformBadge");
-                badge.textContent = data.platform === "youtube" ? "YouTube" : "Instagram";
+                const platformNames = { youtube: "YouTube", instagram: "Instagram", pinterest: "Pinterest" };
+                badge.textContent = platformNames[data.platform] || data.platform;
                 badge.className = `platform-indicator ${data.platform}`;
 
                 // Fill info
@@ -573,6 +680,43 @@
                 document.getElementById("videoTitle").textContent = data.title;
                 document.getElementById("videoDuration").textContent = formatDuration(data.duration);
                 document.getElementById("videoChannel").textContent = data.channel;
+
+                // Fill title
+                const titleSection = document.getElementById("titleSection");
+                const titleText = document.getElementById("titleText");
+                if (data.title) {
+                    titleText.textContent = data.title;
+                    titleSection.style.display = "block";
+                } else {
+                    titleSection.style.display = "none";
+                }
+
+                // Fill description
+                const descSection = document.getElementById("descSection");
+                const descText = document.getElementById("descText");
+                if (data.description) {
+                    descText.textContent = data.description;
+                    descSection.style.display = "block";
+                } else {
+                    descSection.style.display = "none";
+                }
+
+                // Fill tags
+                const tagsSection = document.getElementById("tagsSection");
+                const tagsList = document.getElementById("tagsList");
+                tagsList.innerHTML = "";
+                if (data.tags && data.tags.length > 0) {
+                    data.tags.forEach(tag => {
+                        const span = document.createElement("span");
+                        span.className = "tag";
+                        span.textContent = "#" + tag;
+                        span.onclick = () => copyToClipboard("#" + tag, span);
+                        tagsList.appendChild(span);
+                    });
+                    tagsSection.style.display = "block";
+                } else {
+                    tagsSection.style.display = "none";
+                }
 
                 // Fill download options
                 const qualityList = document.getElementById("qualityList");
@@ -605,7 +749,7 @@
                             <span class="quality-badge ${badgeClass}">${fmt.quality}</span>
                             <span class="quality-size">${typeLabel}${sizeText ? ' &middot; ' + sizeText : ''}</span>
                         </div>
-                        <button class="download-btn" onclick="downloadVideo('${fmt.quality}', '${encodeURIComponent(url)}', '${fmt.type}')">
+                        <button class="download-btn" onclick="downloadVideo('${fmt.quality}', '${encodeURIComponent(url)}', '${fmt.type}', '${fmt.image_url ? encodeURIComponent(fmt.image_url) : ''}')">
                             Download
                         </button>
                     `;
@@ -622,8 +766,9 @@
             }
         }
 
-        async function downloadVideo(quality, encodedUrl, type) {
+        async function downloadVideo(quality, encodedUrl, type, encodedImageUrl) {
             const url = decodeURIComponent(encodedUrl);
+            const imageUrl = encodedImageUrl ? decodeURIComponent(encodedImageUrl) : "";
             const btn = event.target;
             const originalText = btn.textContent;
 
@@ -631,10 +776,13 @@
             btn.innerHTML = '<span class="btn-spinner"></span>Preparing...';
 
             try {
+                const body = { url, quality, type };
+                if (imageUrl) body.image_url = imageUrl;
+
                 const response = await fetch(`${API_URL}/api/download`, {
                     method: "POST",
                     headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({ url, quality, type })
+                    body: JSON.stringify(body)
                 });
 
                 if (!response.ok) {
@@ -671,6 +819,29 @@
                 btn.textContent = originalText;
                 btn.disabled = false;
             }
+        }
+
+        function copyToClipboard(text, btn) {
+            navigator.clipboard.writeText(text).then(() => {
+                const orig = btn.textContent;
+                btn.textContent = "Copied!";
+                btn.classList.add("copied");
+                setTimeout(() => {
+                    btn.textContent = orig;
+                    btn.classList.remove("copied");
+                }, 1500);
+            });
+        }
+
+        function copyText(elementId, btn) {
+            const text = document.getElementById(elementId).textContent;
+            copyToClipboard(text, btn);
+        }
+
+        function copyAllTags(btn) {
+            const tags = Array.from(document.querySelectorAll("#tagsList .tag"))
+                .map(t => t.textContent).join(" ");
+            copyToClipboard(tags, btn);
         }
 
         document.getElementById("urlInput").addEventListener("keydown", (e) => {
