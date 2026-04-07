@@ -11,9 +11,11 @@ app = Flask(__name__)
 CORS(app)
 
 # Set ffmpeg path for yt-dlp
-import imageio_ffmpeg
-FFMPEG_PATH = imageio_ffmpeg.get_ffmpeg_exe()
-FFMPEG_DIR = os.path.dirname(FFMPEG_PATH)
+try:
+    import imageio_ffmpeg
+    FFMPEG_DIR = os.path.dirname(imageio_ffmpeg.get_ffmpeg_exe())
+except ImportError:
+    FFMPEG_DIR = "/usr/bin"
 
 DOWNLOAD_DIR = os.path.join(tempfile.gettempdir(), "download_media")
 os.makedirs(DOWNLOAD_DIR, exist_ok=True)
