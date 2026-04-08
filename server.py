@@ -11,11 +11,17 @@ app = Flask(__name__)
 CORS(app)
 
 # Set ffmpeg path for yt-dlp
+import shutil
 try:
     import imageio_ffmpeg
-    FFMPEG_DIR = os.path.dirname(imageio_ffmpeg.get_ffmpeg_exe())
-except ImportError:
-    FFMPEG_DIR = "/usr/bin"
+    ffmpeg_exe = imageio_ffmpeg.get_ffmpeg_exe()
+    FFMPEG_DIR = os.path.dirname(ffmpeg_exe)
+    # Copy as "ffmpeg" if needed (imageio names it differently)
+    ffmpeg_copy = os.path.join(FFMPEG_DIR, "ffmpeg")
+    if not os.path.exists(ffmpeg_copy) and not os.path.exists(ffmpeg_copy + ".exe"):
+        os.symlink(ffmpeg_exe, ffmpeg_copy)
+except Exception:
+    FFMPEG_DIR = os.path.dirname(shutil.which("ffmpeg") or "/usr/bin/ffmpeg")
 
 DOWNLOAD_DIR = os.path.join(tempfile.gettempdir(), "download_media")
 os.makedirs(DOWNLOAD_DIR, exist_ok=True)
